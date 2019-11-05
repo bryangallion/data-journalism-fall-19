@@ -1,0 +1,258 @@
+---
+title: "Data Analysis Project: Exploratory Analysis"
+author: "Bryan Gallion"
+date: "Nov. 3, 2019"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Objective
+
+This markdown file includes initial attempts at loading, cleaning, understanding and analyzing data for the analysis project. 
+
+I’ll be looking at the relationship between opioid use and homelessness in the Kensington neighborhood of Philadelphia. The city is tackling the two epidemics together, so I want to look deeper into the correlation between them. 
+
+For comparison, I’ll also be analyzing nationwide data to see how Kensington compares to country wide trends. 
+
+Some questions that could motivate my work include: Does drug use in Kensington correlate with homelessness rates in the neighborhood? Is opioid use decreasing over time as homeless encampments are being cleared from the city’s streets? How do Kensington’s homeless and opioid rates compare to trends seen throughout the U.S.?
+
+I’m going to look at opioid data from the Washington Post’s ARCOS R package, specifically focusing on shipments sent to the zip code sent to Kensington. I’m also going to look at Point-in-Time data to see how the opioid use and homeless rates connect over the seven-year period that the ARCOS database tracks. Sean will also be providing a crosswalk of opioid and homeless data that I will analyze. 
+
+## Load Necessary Packages
+```{r}
+# Load Tidyverse, janitor, arcos, tidycensus
+library(tidyverse)
+library(janitor)
+library(arcos)
+library(tidycensus)
+```
+## Store API Key
+```{r}
+# Store an API key as an object called key
+key <- "uO4EK6I"
+```
+## Load ARCOS data
+```{r}
+# Get annual total pills for each buyer (pharmacy, etc.) in a county
+arcos_buyer_yearly <- combined_buyer_annual(key=key) %>%
+  clean_names()
+
+# Load buyer_addresses
+buyer_addresses <- read_csv("data/buyer_addresses.csv")
+
+# Load buyer_totals
+buyer_totals <- read_csv("data/buyer_totals.csv")
+
+# Load buyer_annual_by_year
+buyer_annual_by_year <- read_csv("data/buyer_annual_by_year.csv")
+
+# Load state_population_per_year
+state_population_per_year <- read_csv("data/state_population_per_year.csv")
+
+#Load arcos raw data for Philadelphia
+arcos_philadelphia_raw <- read_tsv("data/arcos-pa-philadelphia-42101-itemized.tsv") %>%
+  clean_names()
+```
+## Calculate Pills Per State and County
+
+1. How many opioid pills were shipped to each state between 2006 and 2012? And where does Pennsylvania rank on the list?
+```{r}
+# Group by buyer state, summarize the total pills each received and rank descending
+arcos_buyer_yearly %>%
+  group_by(buyer_state) %>%
+  summarise(total_pills = sum(dosage_unit) 
+    ) %>%
+  arrange(desc(total_pills))
+
+# Pennsylvania received 3,088,637,076 pills during the years tracked in the AROCS database, ranking sixth among all states in the U.S. The state's total came in behind California, Florida, Texas, Ohio and New York.
+```
+
+2. How many pills per shipment did each state receive? And where did Pennsylvania rank?
+```{r}
+# Group by buyer state, summarize the totals pills per shipment and rank descending
+arcos_buyer_yearly %>%
+  group_by(buyer_state) %>%
+  summarise(shipments = n(),
+            total_pills = sum(dosage_unit), 
+            avg_pills_per_shipment = mean(dosage_unit)
+            ) %>%
+  arrange(desc(avg_pills_per_shipment))
+
+# While Pennsylvania ranked near the top of the list of states in terms of total pills received, it ranked 31st in average pills per shipment -- 116,649.18. Even though it received a large number of pills between 2006 and 2012, the shipments weren't as massive on average compared to many other states.
+```
+
+3. When looking only at Pennsylvania counties, where does Philadelphia rank in terms of total pills received between 2006 and 2012?
+```{r}
+# Group by buyer county, filter for Pennsylvania counties only, summarize total pills and arrange descending
+arcos_buyer_yearly %>%
+  group_by(buyer_county) %>%
+  filter(buyer_state == "PA") %>%
+  summarise(total_pills = sum(dosage_unit) 
+    ) %>%
+  arrange(desc(total_pills))
+
+# Philadelphia received the most pills out of all Pennsylvania counties: 394,047,551. The next-highest -- Allegheny -- received 338,716,252, followed by Montgomery County with 193,652,578. 	
+```
+
+4. Where does Phildelphia rank in terms of pills per shipment?
+```{r}
+# Group by buyer county, filter for Pennsylvania counties only, summarize average pills per shipment and arrange descending
+arcos_buyer_yearly %>%
+  group_by(buyer_county) %>%
+  filter(buyer_state == "PA") %>%
+  summarise(shipments = n(),
+            total_pills = sum(dosage_unit), 
+            avg_pills_per_shipment = mean(dosage_unit)
+            ) %>%
+  arrange(desc(avg_pills_per_shipment))
+
+# Philadelphia ranked 25th among Pennsylvania counties in terms of average pills per shipment with 127,112.11, despite receiving the most pills overall during the time tracked by the ARCOS database.
+```
+
+5. What was the year-over-year trend like for the number of pills sent to Pennsylvania?
+```{r}
+# Group by year, filter for Pennsylvania and summarize total pills per year
+arcos_buyer_yearly %>%
+  group_by(year) %>%
+  filter(buyer_state == "PA") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# The number of pills shipped to Pennsylvania each year increased between 2006 and 2012, but at different rates between every year. The state received about 48 million more pills in 2007 than in 2006, about 39 million more in 2008 than in 2007, about  36 million more in 2009 than in 2008, and about 25 million more in 2010 than in 2009. The number of pills shot up by about 43 million more in 2011 than in 2010 but only by about 7 million more in 2012 than in 2011. 
+```
+
+6. What was the year-over-year trend for the number of pills sent to Philadelphia?
+```{r}
+# Group by year, filter for Philadelphia and Pennsylvania, and summarize total pills per year
+arcos_buyer_yearly %>%
+  group_by(year) %>%
+  filter(buyer_state == "PA", buyer_county == "PHILADELPHIA") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# Philadelphia continued to receive more and more pills each year, until the number of total annual pills it received decreased in 2012 -- much like the statewide trend only increased marginally in 2012. What happend that year to see not as much of an increase in the number of pills shipped to Philadelphia and Pennsylvania overall?
+```
+7. What does this year-over-year trend look like visually?
+```{r}
+# Load county data
+arcos_county_pills_per_year <- summarized_county_annual(key = key) %>%
+  clean_names()
+
+# Create object for only Philadelphia data
+philadelphia_pills_per_year <- arcos_county_pills_per_year %>%
+  filter(buyer_state == "PA", buyer_county == "PHILADELPHIA") %>%
+  select(year, dosage_unit)
+
+# Create a bar chart for shipments received each year between 2006 and 2012
+ggplot(philadelphia_pills_per_year) +
+  geom_bar(stat="identity", aes(year, dosage_unit), fill="purple") +
+  labs(x="Year", y="Total pills", title="In Philadelphia, opioid shipments increased steadily \nbetween 2006 and 2012", subtitle = "Total pills shipped to Philadelphia by year", caption = "Source: DEA ARCOS database, via Washington Post") +
+  scale_x_continuous(breaks = c(2006, 2007, 2008, 2009, 2010, 2011, 2012))
+
+
+# Turn off scientific notation
+options(scipen=999)
+
+# Philadelphia received a massive number of pills during the period tracked by the ARCOS database -- almost 70 million by 2012. The number of pills per year steadily increased over this seven-year span. Seeing the change over time prompts many questions to look into further: Was no one catching on to how extreme the opioid epidemic was in the city during this time? Did any pharmacies get in trouble? 
+```
+
+## Calculating Pills Per Person
+
+8. Which state received the highest rate of pills per person? Where does Pennsylvania rank?
+```{r}
+# Join buyer_totals and state_population_per_year and calculate the rate of pills per person
+buyer_totals %>%
+  inner_join(state_population_per_year, by="buyer_state") %>%
+  group_by(buyer_state, population_average) %>% 
+  summarise(total_pills_by_state = sum(total_pills)) %>%
+  mutate(rate = total_pills_by_state/population_average) %>%
+  arrange(desc(rate))
+
+# West Virginia received the highest rate of pills per person. It received 853,490,268 pills with a population average of 1,835,903, which results in a rate of 464.9 pills per person. Pennsylvania ranked 27th among U.S. states. It received 308,863,7076 pills with an average population of 12,596,665, which equals a pills per person rate of 245.2. 
+```
+
+9. How many pills per person did Philadelphia receive? How does this rate compare to other Pennsylvania counties?
+```{r}
+# Filter the nationwide buyer data to narrow in on Pennsylvania counties
+pa_buyer_total <- arcos_buyer_yearly %>%
+  group_by(buyer_county) %>%
+  filter(buyer_state == "PA") %>%
+  summarise(total_pills = sum(dosage_unit) 
+    ) %>%
+  arrange(desc(total_pills))
+```
+```{r}
+# Filter the nationwide county population data to narrow in on Pennsylvania
+county_population(key=key, state="PA") %>%
+  summarise()
+
+# Having trouble with this question -- I know I have to join population and pills, but how do I average the population for the seven years tracked?
+```
+## Summarizing Shipments to Philadelphia Pharmacies
+
+10. Summarize the raw ARCOS database for Philadelphia counties. What information from this summary is telling about the shipments received by Philadelphia pharmacies during the time tracked in the ARCOS database?
+```{r}
+summary(arcos_philadelphia_raw)
+
+# The most useful information is the dosage unit summary. This column represents the number of pills sent in a particular shipment. The minimum was 3, the maximum was 121,200 and the mean was 497.2.
+```
+## Focusing in on the Kensington Neighborhood
+
+11. How many entities bought opioid pills between 2006 and 2012? Were most of them pharmacies or practitioners?
+```{r}
+# Join buyer_addresses and buyer_totals to have zip code and total pills in same dataset
+kensington <- buyer_addresses %>%
+  right_join(buyer_totals, by="buyer_dea_no") %>%
+  filter(buyer_zip == "19125") %>%
+  arrange(desc(total_pills)) %>%
+  print(kensington)
+
+# Filtering for the Kensington zip code yielded 12 entries of buyers. Four were chain pharmacies, four were retail pharmacies and four were practitioners. The CVS Pharmacy located on Aramingo Ave. received the most pills during the seven years tracked -- 2,775,450. The Caring Pharmacy on Kensington Ave. received 934,810 pills, the next-highest number.
+```
+
+12. How many of these buyers purchased pills every year tracked in the ARCOS database? Which other ones only made purchases in a few years?
+```{r}
+# Join kensington and buyer_annual_by_year to see year-by-year breakdown
+kensington_annual <- kensington %>%
+  right_join(buyer_annual_by_year, by="buyer_dea_no") %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA") %>%
+  arrange(desc(total_pills)) %>%
+  print(kensington_annual)
+
+# The CVS Pharmacy on Aramingo Avenue received shipments each year from 2006 to 2012, as did Caring Pharmacy and Philadelphia Pharmacy. Thrift Drug, Inc. received shipments every year except 2006; Househang Kaveh, MD David M. Gejer, DDS snd received shipments every year except 2012, the Rite Aid on East Lehigh Ave. received shipments between 2006 and 2008, York St. Pharmacy received shipments from 2010 to 2012, Gabriel B. Rosales, MD received pills in 2010 and 2011, Ronald W. Channell, DPM received shipments only in 2007 and East Lehigh Health Pharmacy recieved pills in only 2012.
+```
+13. Focus in on the CVS Pharmacy that received the most pills. How did the number of pills shipped to this pharmacy change over time?
+```{r}
+# Group kensington_annual by year and filter by Pennsylvania CVS Pharmacy
+kensington_annual %>%
+  group_by(year) %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA", buyer_name == "PENNSYLVANIA CVS PHARMACY, L.L.C.") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# The inflow of pills to CVS Pharmacy in Kensington fluctuated year over year between 2006 and 2012. It received over 26,000 more pills in 2007 than in 2006. The pharmacy received 60,000 more pills in 2009 than it did in 2008, but then it started receiving less pills than it did before every year after that. In 2012, it received about 72,000 less pills than it did in 2011.  
+```
+
+14. Summarize the shipments to the Kensington zip code. What valuable information does this summary yield?
+```{r}
+# Summarize the sum of pills and the average & maximum pills per shipment
+select(arcos_philadelphia_raw, buyer_name, buyer_zip, dosage_unit) %>%
+  filter(buyer_zip == "19125") %>%
+  summarise (shipments = n(),
+            total_pills = sum(dosage_unit), 
+            avg_pills_per_shipment = mean(dosage_unit),
+            max_pills_in_shipment = max(dosage_unit)
+            ) %>%
+  arrange(desc(avg_pills_per_shipment))
+
+# From 11,725 shipments, Kensington received 5,974,700 pills. The maximum number of pills in a shipment was 6,000, and the average pills per shipment was 509.6. 
+```
