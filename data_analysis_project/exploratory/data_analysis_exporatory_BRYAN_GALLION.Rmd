@@ -153,7 +153,7 @@ philadelphia_pills_per_year <- arcos_county_pills_per_year %>%
 
 # Create a bar chart for shipments received each year between 2006 and 2012
 ggplot(philadelphia_pills_per_year) +
-  geom_bar(stat="identity", aes(year, dosage_unit), fill="purple") +
+  geom_bar(stat="identity", aes(year, dosage_unit), fill="orange") +
   labs(x="Year", y="Total pills", title="In Philadelphia, opioid shipments increased steadily \nbetween 2006 and 2012", subtitle = "Total pills shipped to Philadelphia by year", caption = "Source: DEA ARCOS database, via Washington Post") +
   scale_x_continuous(breaks = c(2006, 2007, 2008, 2009, 2010, 2011, 2012))
 
@@ -227,7 +227,7 @@ kensington_annual <- kensington %>%
   arrange(desc(total_pills)) %>%
   print(kensington_annual)
 
-# The CVS Pharmacy on Aramingo Avenue received shipments each year from 2006 to 2012, as did Caring Pharmacy and Philadelphia Pharmacy. Thrift Drug, Inc. received shipments every year except 2006; Househang Kaveh, MD David M. Gejer, DDS snd received shipments every year except 2012, the Rite Aid on East Lehigh Ave. received shipments between 2006 and 2008, York St. Pharmacy received shipments from 2010 to 2012, Gabriel B. Rosales, MD received pills in 2010 and 2011, Ronald W. Channell, DPM received shipments only in 2007 and East Lehigh Health Pharmacy recieved pills in only 2012.
+# The CVS Pharmacy on Aramingo Avenue received shipments each year from 2006 to 2012, as did Caring Pharmacy and Philadelphia Pharmacy. Thrift Drug, Inc. received shipments every year except 2006; Househang Kaveh, MD and David M. Gejer, DDS received shipments every year except 2012, the Rite Aid on East Lehigh Ave. received shipments between 2006 and 2008, York St. Pharmacy received shipments from 2010 to 2012, Gabriel B. Rosales, MD received pills in 2010 and 2011, Ronald W. Channell, DPM received shipments only in 2007 and East Lehigh Health Pharmacy recieved pills in only 2012.
 ```
 13. Focus in on the CVS Pharmacy that received the most pills. How did the number of pills shipped to this pharmacy change over time?
 ```{r}
@@ -241,8 +241,31 @@ kensington_annual %>%
 
 # The inflow of pills to CVS Pharmacy in Kensington fluctuated year over year between 2006 and 2012. It received over 26,000 more pills in 2007 than in 2006. The pharmacy received 60,000 more pills in 2009 than it did in 2008, but then it started receiving less pills than it did before every year after that. In 2012, it received about 72,000 less pills than it did in 2011.  
 ```
+14. Househang Kaveh, MD and David M. Gejer, DDS received shipments every year except 2012. What do the shipment rates over the years look like to these practitioners? Did they get in trouble?
+```{r}
+# Group kensington_annual by year and filter by "KAVEH, HOUSHANG MD"
+kensington_annual %>%
+  group_by(year) %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA", buyer_name == "KAVEH, HOUSHANG MD") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
 
-14. Summarize the shipments to the Kensington zip code. What valuable information does this summary yield?
+# The pills sent to Dr. Kaveh increased by 1,500 in 2007, fell back to 2,000 in 2008 and 2009 and then rose to 3,000 in 2010 and 2011. Dr. Kaveh's license went inactive at the end of 2012, according to OpenGovUS.
+```
+```{r}
+# Group kensington_annual by year and filter by "GEJER, DAVID M DDS"
+kensington_annual %>%
+  group_by(year) %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA", buyer_name == "GEJER, DAVID M DDS") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# Dr. Gejer received the most pills in 2006. The quantity fell by 400 in 2007, then rose by 200 more in 2008 and then fell each year through 2011. I couldn't find anything online about whether or not he still has his license.
+```
+
+15. Summarize the shipments to the Kensington zip code. What valuable information does this summary yield?
 ```{r}
 # Summarize the sum of pills and the average & maximum pills per shipment
 select(arcos_philadelphia_raw, buyer_name, buyer_zip, dosage_unit) %>%
