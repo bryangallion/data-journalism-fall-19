@@ -1,0 +1,472 @@
+---
+title: "Data Analysis Project: Expanded Analysis"
+author: "Bryan Gallion"
+date: "Dec. 1, 2019"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Objective
+
+This markdown file includes in-depth attempts at loading, cleaning, understanding and analyzing data for the analysis project. 
+
+I’ll be looking at the relationship between opioid use and homelessness in the Kensington neighborhood of Philadelphia. The city is tackling the two epidemics together, so I want to look deeper into the correlation between them. 
+
+For comparison, I’ll also be analyzing nationwide data to see how Kensington and Philadelphia compare to country wide trends. 
+
+Some broad questions that motivate my work include: Does drug use in Kensington correlate with homelessness rates in the neighborhood? Are these rates changing over time? If so, are they increasing or decreasing? How do Kensington’s homeless and opioid rates compare to trends seen throughout the U.S.?
+
+I’m looking at opioid data from the Washington Post’s ARCOS R package, specifically focusing on shipments sent to the zip code sent to Kensington. I’m also analyzing a crosswalk of opioid and homeless data provided by Sean to see the pill breakdowns by homeless continuums of care, as well as Point-in-Time data to see how the opioid use and homeless rates connect over the seven-year period that the ARCOS database tracks. 
+
+## Load Necessary Packages
+```{r}
+# Install packages
+# install.packages("readxl")
+```
+```{r}
+# Load Tidyverse, janitor, arcos, tidycensus
+library(tidyverse)
+library(janitor)
+library(arcos)
+library(tidycensus)
+library(readxl)
+```
+## Store API Key
+```{r}
+# Store an API key as an object called key
+key <- "uO4EK6I"
+```
+## Load ARCOS data
+```{r}
+# Get annual total pills for each buyer (pharmacy, etc.) in a county
+arcos_buyer_yearly <- combined_buyer_annual(key=key) %>%
+  clean_names()
+
+# Load buyer_addresses
+buyer_addresses <- read_csv("data/buyer_addresses.csv")
+
+# Load buyer_totals
+buyer_totals <- read_csv("data/buyer_totals.csv")
+
+# Load buyer_annual_by_year
+buyer_annual_by_year <- read_csv("data/buyer_annual_by_year.csv")
+
+# Load state_population_per_year
+state_population_per_year <- read_csv("data/state_population_per_year.csv")
+
+#Load arcos raw data for Philadelphia
+arcos_philadelphia_raw <- read_tsv("data/arcos-pa-philadelphia-42101-itemized.tsv") %>%
+  clean_names()
+```
+## Load Continuum of Care + Pill Data Crosswalk
+```{r}
+# Load tract_pills dataset 
+tract_pills <- read_csv("data/tract_pills.csv")
+
+# Load crosswalk_coc_to_tract
+crosswalk_coc_to_tract <- read_csv("data/crosswalk_coc_to_tract.csv")
+```
+## Load Point-in-Time Count data 
+```{r}
+#Load PIT data from every CoC for 2010
+pit_count_by_coc_2010 <- read_excel("data/2010_pit_count_by_coc.xlsx") %>%
+  clean_names()
+
+# Load overall and unsheltered PIT data for Philadelphia between 2007 and 2018
+philadelphia_coc_pit_07_18 <- read_excel("data/philadelphia_coc_pit_07_18.xlsx")
+```
+## Calculating Pills Per State and County
+
+1. How many opioid pills were shipped to each state between 2006 and 2012? And where does Pennsylvania rank on the list?
+```{r}
+# Group by buyer state, summarize the total pills each received and rank descending
+arcos_buyer_yearly %>%
+  group_by(buyer_state) %>%
+  summarise(total_pills = sum(dosage_unit) 
+    ) %>%
+  arrange(desc(total_pills))
+
+# Pennsylvania received 3,088,637,076 pills during the years tracked in the AROCS database, ranking sixth among all states in the U.S. The state's total came in behind California, Florida, Texas, Ohio and New York.
+```
+
+2. How many pills per shipment did each state receive? And where did Pennsylvania rank?
+```{r}
+# Group by buyer state, summarize the totals pills per shipment and rank descending
+arcos_buyer_yearly %>%
+  group_by(buyer_state) %>%
+  summarise(shipments = n(),
+            total_pills = sum(dosage_unit), 
+            avg_pills_per_shipment = mean(dosage_unit)
+            ) %>%
+  arrange(desc(avg_pills_per_shipment))
+
+# While Pennsylvania ranked near the top of the list of states in terms of total pills received, it ranked 31st in average pills per shipment -- 116,649.18. Even though it received a large number of pills between 2006 and 2012, the shipments weren't as massive on average compared to many other states.
+```
+
+3. When looking only at Pennsylvania counties, where does Philadelphia rank in terms of total pills received between 2006 and 2012?
+```{r}
+# Group by buyer county, filter for Pennsylvania counties only, summarize total pills and arrange descending
+arcos_buyer_yearly %>%
+  group_by(buyer_county) %>%
+  filter(buyer_state == "PA") %>%
+  summarise(total_pills = sum(dosage_unit) 
+    ) %>%
+  arrange(desc(total_pills))
+
+# Philadelphia received the most pills out of all Pennsylvania counties: 394,047,551. The next-highest -- Allegheny -- received 338,716,252, followed by Montgomery County with 193,652,578. 	
+```
+
+4. Where does Phildelphia rank in terms of pills per shipment?
+```{r}
+# Group by buyer county, filter for Pennsylvania counties only, summarize average pills per shipment and arrange descending
+arcos_buyer_yearly %>%
+  group_by(buyer_county) %>%
+  filter(buyer_state == "PA") %>%
+  summarise(shipments = n(),
+            total_pills = sum(dosage_unit), 
+            avg_pills_per_shipment = mean(dosage_unit)
+            ) %>%
+  arrange(desc(avg_pills_per_shipment))
+
+# Philadelphia ranked 25th among Pennsylvania counties in terms of average pills per shipment with 127,112.11, despite receiving the most pills overall during the time tracked by the ARCOS database.
+```
+
+5. What was the year-over-year trend like for the number of pills sent to Pennsylvania?
+```{r}
+# Group by year, filter for Pennsylvania and summarize total pills per year
+arcos_buyer_yearly %>%
+  group_by(year) %>%
+  filter(buyer_state == "PA") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# The number of pills shipped to Pennsylvania each year increased between 2006 and 2012, but at different rates between every year. The state received about 48 million more pills in 2007 than in 2006, about 39 million more in 2008 than in 2007, about  36 million more in 2009 than in 2008, and about 25 million more in 2010 than in 2009. The number of pills shot up by about 43 million more in 2011 than in 2010 but only by about 7 million more in 2012 than in 2011. 
+```
+
+6. What was the year-over-year trend for the number of pills sent to Philadelphia?
+```{r}
+# Group by year, filter for Philadelphia and Pennsylvania, and summarize total pills per year
+arcos_buyer_yearly %>%
+  group_by(year) %>%
+  filter(buyer_state == "PA", buyer_county == "PHILADELPHIA") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# Philadelphia continued to receive more and more pills each year, until the number of total annual pills it received decreased in 2012 -- much like the statewide trend only increased marginally in 2012. What happend that year to see not as much of an increase in the number of pills shipped to Philadelphia and Pennsylvania overall?
+```
+
+7. What does this year-over-year trend look like visually?
+```{r}
+# Load county data
+arcos_county_pills_per_year <- summarized_county_annual(key = key) %>%
+  clean_names()
+
+# Create object for only Philadelphia data
+philadelphia_pills_per_year <- arcos_county_pills_per_year %>%
+  filter(buyer_state == "PA", buyer_county == "PHILADELPHIA") %>%
+  select(year, dosage_unit)
+
+# Create a bar chart for shipments received each year between 2006 and 2012
+ggplot(philadelphia_pills_per_year) +
+  geom_bar(stat="identity", aes(year, dosage_unit), fill="orange") +
+  labs(x="Year", y="Total pills", title="In Philadelphia, opioid shipments increased steadily \nbetween 2006 and 2012", subtitle = "Total pills shipped to Philadelphia by year", caption = "Source: DEA ARCOS database, via Washington Post") +
+  scale_x_continuous(breaks = c(2006, 2007, 2008, 2009, 2010, 2011, 2012))
+
+
+# Turn off scientific notation
+options(scipen=999)
+
+# Philadelphia received a massive number of pills during the period tracked by the ARCOS database -- almost 70 million by 2012. The number of pills per year steadily increased over this seven-year span. Seeing the change over time prompts many questions to look into further: Was no one catching on to how extreme the opioid epidemic was in the city during this time? Did any pharmacies get in trouble? 
+```
+
+## Calculating Pills Per Person
+
+8. Which state received the highest rate of pills per person? Where does Pennsylvania rank?
+```{r}
+# Join buyer_totals and state_population_per_year and calculate the rate of pills per person
+buyer_totals %>%
+  inner_join(state_population_per_year, by="buyer_state") %>%
+  group_by(buyer_state, population_average) %>% 
+  summarise(total_pills_by_state = sum(total_pills)) %>%
+  mutate(rate = total_pills_by_state/population_average) %>%
+  arrange(desc(rate))
+
+# West Virginia received the highest rate of pills per person. It received 853,490,268 pills with a population average of 1,835,903, which results in a rate of 464.9 pills per person. Pennsylvania ranked 27th among U.S. states. It received 308,863,7076 pills with an average population of 12,596,665, which equals a pills per person rate of 245.2. 
+```
+
+## Summarizing Shipments to Philadelphia Pharmacies
+
+9. Summarize the raw ARCOS database for Philadelphia counties. What information from this summary is telling about the shipments received by Philadelphia pharmacies during the time tracked in the ARCOS database?
+```{r}
+summary(arcos_philadelphia_raw)
+
+# The most useful information is the dosage unit summary. This column represents the number of pills sent in a particular shipment. The minimum was 3, the maximum was 121,200 and the mean was 497.2.
+```
+## Focusing in on the Kensington Neighborhood
+
+10. How many entities bought opioid pills between 2006 and 2012? Were most of them pharmacies or practitioners?
+```{r}
+# Join buyer_addresses and buyer_totals to have zip code and total pills in same dataset
+kensington <- buyer_addresses %>%
+  right_join(buyer_totals, by="buyer_dea_no") %>%
+  filter(buyer_zip == "19125") %>%
+  arrange(desc(total_pills)) %>%
+  print(kensington)
+
+# Filtering for the Kensington zip code yielded 12 entries of buyers. Four were chain pharmacies, four were retail pharmacies and four were practitioners. The CVS Pharmacy located on Aramingo Ave. received the most pills during the seven years tracked -- 2,775,450. The Caring Pharmacy on Kensington Ave. received 934,810 pills, the next-highest number.
+```
+
+11. How many of these buyers purchased pills every year tracked in the ARCOS database? Which other ones only made purchases in a few years?
+```{r}
+# Join kensington and buyer_annual_by_year to see year-by-year breakdown
+kensington_annual <- kensington %>%
+  right_join(buyer_annual_by_year, by="buyer_dea_no") %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA") %>%
+  arrange(desc(total_pills)) %>%
+  print(kensington_annual)
+
+# The CVS Pharmacy on Aramingo Avenue received shipments each year from 2006 to 2012, as did Caring Pharmacy and Philadelphia Pharmacy. Thrift Drug, Inc. received shipments every year except 2006; Househang Kaveh, MD and David M. Gejer, DDS received shipments every year except 2012, the Rite Aid on East Lehigh Ave. received shipments between 2006 and 2008, York St. Pharmacy received shipments from 2010 to 2012, Gabriel B. Rosales, MD received pills in 2010 and 2011, Ronald W. Channell, DPM received shipments only in 2007 and East Lehigh Health Pharmacy recieved pills in only 2012.
+```
+
+12. Focus in on the CVS Pharmacy that received the most pills. How did the number of pills shipped to this pharmacy change over time?
+```{r}
+# Group kensington_annual by year and filter by Pennsylvania CVS Pharmacy
+kensington_annual %>%
+  group_by(year) %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA", buyer_name == "PENNSYLVANIA CVS PHARMACY, L.L.C.") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# The inflow of pills to CVS Pharmacy in Kensington fluctuated year over year between 2006 and 2012. It received over 26,000 more pills in 2007 than in 2006. The pharmacy received 60,000 more pills in 2009 than it did in 2008, but then it started receiving less pills than it did before every year after that. In 2012, it received about 72,000 less pills than it did in 2011.  
+```
+
+13. Househang Kaveh, MD and David M. Gejer, DDS received shipments every year except 2012. What do the shipment rates over the years look like to these practitioners? Did they get in trouble?
+```{r}
+# Group kensington_annual by year and filter by "KAVEH, HOUSHANG MD"
+kensington_annual %>%
+  group_by(year) %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA", buyer_name == "KAVEH, HOUSHANG MD") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# The pills sent to Dr. Kaveh increased by 1,500 in 2007, fell back to 2,000 in 2008 and 2009 and then rose to 3,000 in 2010 and 2011. Dr. Kaveh's license went inactive at the end of 2012, according to OpenGovUS.
+```
+```{r}
+# Group kensington_annual by year and filter by "GEJER, DAVID M DDS"
+kensington_annual %>%
+  group_by(year) %>%
+  filter(buyer_zip == "19125", buyer_city == "PHILADELPHIA", buyer_name == "GEJER, DAVID M DDS") %>%
+  summarise(total_pills = sum(dosage_unit) 
+            ) %>%
+  arrange(year)
+
+# Dr. Gejer received the most pills in 2006. The quantity fell by 400 in 2007, then rose by 200 more in 2008 and then fell each year through 2011. I couldn't find anything online about whether or not he still has his license.
+```
+
+14. Summarize the shipments to the Kensington zip code. What valuable information does this summary yield?
+```{r}
+# Summarize the sum of pills and the average & maximum pills per shipment
+select(arcos_philadelphia_raw, buyer_name, buyer_zip, dosage_unit) %>%
+  filter(buyer_zip == "19125") %>%
+  summarise (shipments = n(),
+            total_pills = sum(dosage_unit), 
+            avg_pills_per_shipment = mean(dosage_unit),
+            max_pills_in_shipment = max(dosage_unit)
+            ) %>%
+  arrange(desc(avg_pills_per_shipment))
+
+# From 11,725 shipments, Kensington received 5,974,700 pills. The maximum number of pills in a shipment was 6,000, and the average pills per shipment was 509.6. 
+```
+
+# Bringing in Continuum of Care and Homeless Data
+
+15. Which CoCs received the most pills during the years tracked in the ARCOS database? Where does Philadelphia's CoC rank nationally?
+```{r}
+# Rename tract_fips in crosswalk dataset to GEOID
+crosswalk_GEOID <- crosswalk_coc_to_tract %>%
+  mutate(GEOID = tract_fips)
+
+# Inner join of crosswalk_GEOID and tract_pills
+coc_tract_pills <- crosswalk_GEOID %>%
+  inner_join(tract_pills, by=("GEOID")) %>%
+  select(coc_code, coc_name, state_code, GEOID, year, total_pills, total_2010_population)
+
+# Summarize by total pills and arrange descending
+coc_tract_pills %>%
+  group_by(coc_name) %>%
+  summarise(total_pills = sum(total_pills)) %>%
+  arrange(desc(total_pills))
+
+# The Texas Balance of State CoC received the most pills: 2,140,839,470. A "balance of state" is a continuum of care that covers any area within a state not already represented by a CoC. Many other balances of state rank high in terms of pills sent to their jurisdictions, including Indiana, Wisconsin and Michigan in the top 10. Philadelphia's CoC ranks 34th out of 354 nationwide -- of CoC that have full data -- in the total number of opioid pills it received between 2006 and 2012. 
+```
+
+16. Sort the CoCs by number of pills received in Pennsylvania jurisdictions only. Which CoC received the most in the state? Where does Philadelphia rank?
+```{r}
+# Filter by the state of Pennsylvania 
+pa_coc_tract_pills <- coc_tract_pills %>%
+  group_by(coc_name) %>%
+  filter(state_code == "pa") %>%
+  summarise(total_pills = sum(total_pills)) %>%
+  arrange(desc(total_pills)) %>%
+  print(pa_coc_tract_pills)
+
+# The Philadelphia CoC ranked first in total pills among 11 Pennsylvania continuums of care that have complete data. Most CoCs within the state are grouped together with multiple counties.
+```
+
+17. Calculate the number of pills per person shipped to each CoC in 2010 (the year we have population data from). Which CoC has the highest rate? And where does Philadelphia's rank nationally?
+```{r}
+# Summarize the number of pills shipped to each CoC in 2010
+coc_pills_2010 <- coc_tract_pills %>%
+  group_by(coc_name, state_code) %>%
+  filter(year == "2010") %>%
+  summarise(total_pills = sum(total_pills)) %>%
+  arrange(desc(total_pills))
+
+# Summarize the total popultion of each CoC in 2010
+population_2010 <- coc_tract_pills %>%
+  group_by(coc_name) %>%
+  filter(year == "2010") %>%
+  select(coc_name, total_2010_population) %>%
+  summarise(total_population = sum(total_2010_population))
+
+# Inner join the number of pills and the population for each CoC in 2010
+pills_population_2010 <- coc_pills_2010 %>%
+  inner_join(population_2010, by=("coc_name")) %>%
+  select(coc_name, state_code, total_pills, total_population)
+
+# Calculate the rate of pills per person in each CoC for 2010
+pills_population_2010 %>%
+  mutate(rate = total_pills/total_population) %>%
+  arrange(desc(rate))
+
+# The Chico, Paradise/Butte County CoC in California had the highest rate of pills per person in 2010 -- 220.07. Philadelphia's CoC ranked near the bottom of the pack for the CoCs that had both pill and population data with which to calculate a rate: 207th out of 326.
+```
+
+18. Where does Philadelphia's pills per person rate rank among Pennsylvania CoCs?
+```{r}
+pills_population_2010 %>%
+  filter(state_code == "pa") %>%
+  mutate(rate = total_pills/total_population) %>%
+  arrange(desc(rate))
+
+# Philadelphia's CoC again ranked near the bottom of the pack in terms of rate when compared to other Pennsylvania CoCs. It placed 10th out of 15 with complete pill and population data.
+```
+
+19. How many people overall are experiencing homelessness in the Philadelphia CoC's jurisdiction compared to its peers nationwide?
+```{r}
+# Arrange the 2010 PIT count data descending by total people counted
+pit_count_by_coc_2010 %>%
+  arrange(desc(overall_2010_homeless))
+
+# The New York City CoC had the most homeless people overall -- both sheltered and unsheltered -- in 2010, the year for which we have pill, population and homeless data. It counted 53,187 people in its Point-in-Time Count that year. It was followed by the Los Angeles City and County CoC, which counted 33,243 people. Philadelphia ranked 20th nationally that year of the 392 CoCs for which data was collected, with 6,084 people experiencing homelessness.
+```
+
+20. What was the rate of homelessness in Philadelphia in 2010 when comparing the homeless number to the total population? How does this rate compare to other CoCs'?
+```{r}
+# Inner join the 2010 population and PIT data
+population_pit_2010 <- pit_count_by_coc_2010 %>%
+  inner_join(population_2010, by=("coc_name")) %>%
+  select(coc_name, overall_2010_homeless, sheltered_2010_homeless, unsheltered_2010_homeless, total_population)
+
+# Calclulate the homeleness rate of the total population by CoC
+population_pit_2010 %>%
+  mutate(rate = overall_2010_homeless/total_population)%>%
+  select(coc_name, overall_2010_homeless, total_population, rate) %>%
+  arrange(desc(rate))
+
+# Atlanta saw the highest homeless rate in 2010: 0.035. Philadelphia ranked 54th among 301 CoCs that had homeless and population data with which to calculate a rate. The CoC's rate was 0.0066.
+```
+
+21. How many unsheltered homeless were counted in Philadelphia? How does that compare to the numbers seen in PIT counts nationwide?
+```{r}
+# Arrange descending by unsheltered homeless 
+pit_count_by_coc_2010 %>%
+  arrange(desc(unsheltered_2010_homeless))
+
+# Philadelphia ranked 101st out of 392 CoCs in terms of unsheltered homeless count. It counted 481 people on its streets in 2010. Los Angeles saw the highest number of unsheltered homeless during its count that year: 19,193. Unsheltered homelessness paints the clearest, most visible picture of the issue since individuals experiencing it are easily counted on the street. They encompass the picture of homelessness that many people think of when they consider the issue -- which is what the one-night snapshot of the Point-in-Time count aims to capture.
+```
+
+22. What was the rate of unsheltered homelessness in Philadelphia in 2010 when comparing the unsheltered number to the total population? How does this rate compare to other CoCs'?
+```{r}
+# Calculate rate of unsheltered homeless
+population_pit_2010 %>%
+  mutate(rate = unsheltered_2010_homeless/total_population)%>%
+  select(coc_name, unsheltered_2010_homeless, total_population, rate) %>%
+  arrange(desc(rate))
+
+# Philadelphia ranked 156th among 301 CoCs that had complete homeless and population data with an unsheltered rate of 0.0052. Hendry, Hardee and Highlands Counties CoC in Florida took the top spot with a rate of 0.0302. 
+```
+
+23. How many sheltered homeless were counted in Philadelphia? How does that compare to the numbers seen in PIT counts nationwide?
+```{r}
+# Arrange descending by sheltered homeless 
+pit_count_by_coc_2010 %>%
+  arrange(desc(sheltered_2010_homeless))
+
+# Philadelphia ranked seventh out of 392 in its number of sheltered homeless in 2010. The CoC counted 5,603 people in its various forms of shelter. The New York City CoC lead the group with 50,007 people staying in shelters the night the city conducted its 2010 count. The sheltered homeless number shows a different side of homelessness that's dependent on the number of beds available in a particular jurisdiction's system. The largest drawback to approaches of many cities -- including Philadelphia -- is often the lack of shelter space or housing units to be occupied by people sleeping on the streets.
+```
+
+24. What was the rate of sheltered homelessness in Philadelphia in 2010 when comparing the sheltered number to the total population? How does this rate compare to other CoCs'?
+```{r}
+# Calculate rate of sheltered homeless
+population_pit_2010 %>%
+  mutate(rate = sheltered_2010_homeless/total_population)%>%
+  select(coc_name, sheltered_2010_homeless, total_population, rate) %>%
+  arrange(desc(rate))
+
+# Philadelphia's sheltered homeless rate in 2010 was 0.0061, which ranked 26th out of 301 CoCs with complete homeless and population data.
+```
+
+25. Calculate the percentage of the total homeless population in each CoC that's unsheltered. Where does Philadelphia fall on the list?
+```{r}
+# Calculate unsheltered percentage by dividing unsheltered number by overall homeless count
+population_pit_2010 %>%
+  mutate(unsheltered_percent = unsheltered_2010_homeless/overall_2010_homeless * 100) %>%
+  select(coc_name, unsheltered_percent) %>%
+  arrange(desc(unsheltered_percent))
+
+# Philadelphia falls relatively low on the list: 282nd out of 367, with 7.91 percent unsheltered. This means that more of the city's homeless population was counted in shelters than on the street in 2010. This leads to further questions -- what's the capacity of Philadelphia's shelter system? Are they actively trying to get people off the streets and into shelters? Have they added more shelter capacity over time?
+```
+26. Calculate the percentage of the total homeless population in each CoC that's sheltered. Where does Philadelphia fall on the list?
+```{r}
+# Calculate sheltered percentage by dividing sheltered number by overall homeless count
+
+population_pit_2010 %>%
+  mutate(sheltered_percent = sheltered_2010_homeless/overall_2010_homeless * 100) %>%
+  select(coc_name, sheltered_percent) %>%
+  arrange(desc(sheltered_percent))
+
+# Philadelphia placed 86th out of 367 in terms of highest sheltered homeless rate in 2010, with 92.09 percent counted in a shelter. 
+```
+
+27. How does Philadelphia's overall homeless rate change over time? And how does it compare to how the number of pills shipped to the CoC's jurisdiction change over time?
+```{r}
+# Create a bar chart for Philadelphia's overall homeless count from 2007 to 2018
+ggplot(philadelphia_coc_pit_07_18) +
+  geom_bar(stat="identity", aes(year, total_homeless), fill="purple") +
+  labs(x="Year", y="Total homeless count", title="In Philadelphia, the overall homeless rate fell slightly\nbetween 2007 and 2018", subtitle = "Overall homeless rate by year", caption = "Source: PIT data, Philadelphia Office of Homeless Services") +
+  scale_x_continuous(breaks = c(2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018))
+
+# Visualizing the change in Philadelphia's overall homeless rate over a period of 12 years shows that its decline was slight. While it has fallen since 2007, the year-over-year change is minimal. 
+```
+
+28.How does Philadelphia's unsheltered homeless rate change over time? And how does it compare to how the number of pills shipped to the CoC's jurisdiction change over time?
+```{r}
+# Create a bar chart for Philadelphia's overall homeless count from 2007 to 2018
+ggplot(philadelphia_coc_pit_07_18) +
+  geom_bar(stat="identity", aes(year, unsheltered_homeless), fill="blue") +
+  labs(x="Year", y="Unsheltered homeless count", title="In Philadelphia, the unsheltered homeless rate remains relatively even before rising", subtitle = "Unsheltered homeless rate by year", caption = "Source: PIT data, Philadelphia Office of Homeless Services") +
+  scale_x_continuous(breaks = c(2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018))
+
+# The change in Philadelphia's unsheltered homeless population over time is more extreme than its overall homeless rate. The fluxuation was minimal from 2007 to 2013, then fell drastically in 2014, only to shoot up again and increasingly rise through 2018. This visual representation of the change prompts questions like: What could be the reason behind such a significant increase between 2015 and 2018? How did the number of pill shipments or opioid overdoses change over the same timeframe? Could they be related?
+```
