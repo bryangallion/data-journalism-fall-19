@@ -1,0 +1,171 @@
+---
+title: "Data Analysis Project: Final Analysis"
+author: "Bryan Gallion"
+date: "Dec. 10, 2019"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Objective
+
+This markdown file includes data calculations and assessments for the analysis project's final phase. 
+
+It aims to draw connections between opioid pill shipments to continuums of care -- a national, Housing and Urban Development Department-sanctioned network of organizations that coordinate community level homeless services -- and homelessness rates in these jurisdictions. 
+
+The most interesting aspect of my exploratory analysis was the comparison of sheltered to unsheltered rates in each CoC. For this last step, I wanted to look further into the correlation between these rates and pills per person to directly assess relationships between the two datasets.
+
+I was initially curious about the number of pills sent to Philadelphia, a community that's currently putting forth a concerted effort to address homelessness and opioid use as intertwined issues. Although my exploratory findings didn't yield any promising leads on the city, looking into sheltered rates made me think about the harm-reduction philosophy its homeless service providers follow. Some facilities allow drug users in to offer a safe place from the street.
+
+The big questions I have now are: Do the number of pills per person shipped to a community correlate with the number of people experiencing homelessness in any way? Do different states or regions see different trends? And where does Philadelphia fall within national trends?
+
+I'm particularly interested in sheltered homelessness. Shelter facilities are a multifaceted subject, considering barriers that people experiencing homelessness often face to entering shelters. Are drug users less likely to use them, considering the no-use policies that many high-barrier facilities have? Or are there places that received large pill quantities that have adopted harm-reduction philosophies, similar to Philadelphia's?
+
+## Install Necessary Packages
+```{r}
+# Install corr package to allow for correlation calculations
+# install.packages('corrr')
+```
+## Load Necessary Packages
+```{r}
+library(tidyverse)
+library(janitor)
+library(tidycensus)
+library(readxl)
+library(corrr)
+library(ggrepel)
+library(ggthemes)
+```
+## Load Pill-Shipment-Per-Continuum-of-Care Data
+```{r}
+# Load frame that contains pill and population data for each CoC in 2010
+pills_population_coc_2010 <- read_csv("data/pills_population_coc_2010.csv")
+```
+## Calculate Pills-Per-Person Rate by CoC
+```{r}
+# Calculate the rate of pills per person shipped to each CoC and arrange descending
+pills_population_coc_2010 %>%
+  mutate(pills_per_person = total_pills_2010/total_2010_population) %>%
+  select(coc_code, coc_name, pills_per_person) %>%
+  arrange(desc(pills_per_person))
+
+# In 2010, the Lake County CoC of California had the highest rate: 108.1 pills per person. California and Tennessee both appear four times in the top 10 on this ranking. 
+
+# Philadelphia ranks 182nd out of 394 for its pills-per-person rate, 39.34. 
+```
+```{r}
+# Calculate the rate of pills per person shipped to each CoC and arrange ascending
+pills_population_coc_2010 %>%
+  mutate(pills_per_person = total_pills_2010/total_2010_population) %>%
+  select(coc_code, coc_name, pills_per_person) %>%
+  arrange(pills_per_person)
+
+# When looking at the lowest pills-per-person rate, no one state jumps out. Illinois and Virginia both appear twice in the lowest 10 rates.
+```
+
+## Load Point-in-Time Count Data
+```{r}
+# Load Point-in-Time count data from each CoC collected in 2010, with breakdowns for overall, sheltered and unsheltered homeless + further divisions in each subset and for type of party (individual or family, etc.)
+pit_coc_2010 <- read_excel("data/pit_coc_2010.xlsx")
+```
+## Join Point-in-Time and Population Data
+```{r}
+# Inner join the pills and population data and the PIT count data into the same dataframe
+pills_pit_population_2010 <- pills_population_coc_2010 %>%
+  inner_join(pit_coc_2010, by="coc_code") 
+```
+## Assess Homeless Rates by CoC
+```{r}
+# Calculate overall homeless rate by CoC and arrange descending
+pills_pit_population_2010 %>%
+  mutate(homeless_rate = overall_homeless/total_2010_population) %>%
+  select(coc_code, overall_homeless, total_2010_population, homeless_rate) %>%
+  arrange(desc(homeless_rate))
+
+# Four California CoCs and three from Florida land in the top 10 for overall homeless rate.
+```
+```{r}
+# Calculate unsheltered homeless rate by CoC and arrange descending
+pills_pit_population_2010 %>%
+  mutate(unsheltered_rate = unsheltered_homeless/total_2010_population) %>%
+  select(coc_code, unsheltered_homeless, total_2010_population, unsheltered_rate) %>%
+  arrange(desc(unsheltered_rate))
+
+# Florida is popular once again for unsheltered homeless rate, appearing five times in the top 10 CoCs for this rate. California appears four times.
+```
+```{r}
+# Calculate sheltered homeless rate by CoC and arrange descending
+pills_pit_population_2010 %>%
+  mutate(sheltered_rate = sheltered_total_homeless/total_2010_population) %>%
+  select(coc_code, coc_name.x, sheltered_total_homeless, total_2010_population, sheltered_rate) %>%
+  arrange(desc(sheltered_rate))
+
+# New states emerge when looking at the sheltered rates. Massachusetts appears four times in the top 10 for CoCs with the highest sheltered rates per total population, and New York appears twice.
+
+# Philadelphia has a high unsheltered population, ranking 14th out of 383 CoCs in 2010 with a rate of .00367.
+```
+```{r}
+# Calculate sheltered homeless rate by CoC and arrange ascending
+pills_pit_population_2010 %>%
+  mutate(sheltered_rate = sheltered_total_homeless/total_2010_population) %>%
+  select(coc_code, sheltered_total_homeless, total_2010_population, sheltered_rate) %>%
+  arrange(sheltered_rate)
+
+# When looking at sheltered rates from lowest to highest, three New York CoCs and two Arkansas CoCs appear in the bottom 10. It's interesting that New York CoCs appear relatively frequently in both the top and bottom 10 sheltered rates.
+```
+## Assess Percentage of Sheltered Homeless by CoC
+```{r}
+# Calculate rate of sheltered homeless by dividing sheltered by overall homeless count
+pills_pit_population_2010 %>% 
+  mutate(sheltered_percent = sheltered_total_homeless/overall_homeless * 100) %>%
+  select(coc_code, sheltered_percent) %>%
+  arrange(desc(sheltered_percent))
+
+# I was curious to see rates of sheltered homelessness out of the overall homeless population in a CoC, instead of just comparing the sheltered population to a CoCs total population. It's interesting that four places had 100 percent of their homeless in shelters. Is that a testament to their shelter capacity and ability to get people off the streets, or do they simply only survey shelters when conducting their PIT counts?
+```
+
+## Calculate Sheltered Homeless Rate and Pills Per Person Together for Each CoC
+```{r}
+# With all necessary data in the same frame, calculate pills per person and total sheltered homeless rate per CoC in 2010, store as new object and arrange descending
+
+shelter_population <- pills_pit_population_2010 %>%
+  mutate(pills_per_person = (total_pills_2010/total_2010_population)) %>%
+  mutate(shelter_rate = (sheltered_total_homeless/total_2010_population)) %>%
+  select(coc_code, total_pills_2010, total_2010_population, pills_per_person, shelter_rate, sheltered_total_homeless) %>%
+  arrange(desc(shelter_rate)) %>%
+  print(shelter_population)
+```
+
+## Calculate Correlation Between Pills Per Person and Sheltered Homeless Rate by CoC
+```{r}
+# Conduct correlation test of pill shipment and sheltered homeless rates
+shelter_population %>%
+  ungroup() %>%
+  select(pills_per_person, shelter_rate) %>%
+  cor() 
+cor.test(shelter_population$pills_per_person,shelter_population$shelter_rate)
+
+# The p-value for the correlation is 0.02986. A correlation is considered statistically significant when it's less than 0.05, so this rate seems like it's something that should be looked into further.
+
+# The rate has a negative correlation, meaning that sheltered rate increases as pills per person decreases. Although it's not that strong, it could still be interesting to explore.
+```
+
+## Plot Correlations 
+```{r}
+# Create a scatter plot of the correlation between pills per person and sheltered homeless
+ggplot(shelter_population) +
+  geom_point(aes(shelter_rate, pills_per_person)) +
+  labs(x="Sheltered homeless rate", y="Pills per person", title="As homeless rate increases, pills per person slightly decline", caption = "Source: DEA ARCOS database via Washington Post + HUD PIT data", fill="coc_code") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_smooth(aes(shelter_rate, pills_per_person), method = "loess", se = FALSE) +
+  geom_text(data=subset(shelter_population, shelter_rate > .003 | pills_per_person > 70), aes(shelter_rate,pills_per_person,label=coc_code))
+
+# The trend line slightly slopes downward sheltered homeless rate increases. While the pills-per-person rates are relatively spread out between 0 and 100 with a concentration between 25 and 50, based on the scatter plot, the homeless rates are largely concentrated betwen a rate of 0 and 0.003.
+
+# Philadelphia's CoC, PA-500, had a pills-per-person rate of 39.34 and a sheltered rate of .00367.Its point nearly lands right on the trend line.
+```
